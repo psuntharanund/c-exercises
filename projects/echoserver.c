@@ -63,5 +63,40 @@ int main(int argc, char **argv) {
 
     /* Socket Code Here */
 
-}
+    char portstr[6];
+    snprintf(portstr, sizeof(portstr), "%hu", portno);
+            
+    /* We need to make it available for both IPv4 and IPv6, and we can do that via getaddrinfo */
+    struct addrinfo hints, *results, *resultparser;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
 
+    int returnCode = getaddrinfo(hostname, portstr, &hints, &results);
+    if (returnCode != 0){
+        fprintf(stderr, "getaddrinfo: %s\n", gai_sterror(returnCode));
+        return 1;
+    }
+
+    int listenfd = -1;
+    for (resultparser = results; resultparser != NULL; resultparser = resultparser->ai_next){
+                                                                                                      
+        listenfd = socket(resultparser->ai_family, resultparser->ai_socktype, resultparser->ai_protocol);
+
+        if (listenfd < 0){
+            printf("Unable to create socket . . . quitting application.\n");
+            continue;
+        }
+        
+        if (bind(listenfd, resultparser->ai_addr, resultparser->ai_addrlen) == 0){
+            break;
+        }
+        
+        close(listenfd);
+        listenfd = -1;
+    }   
+
+    printf("Connected successfully to %s:%hu\n", hostname, portno);
+
+  }
+}
