@@ -1,13 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include "test_functs.h"
 
-int* generateArray(int size){
-    int* array= malloc(sizeof(int) * size);
-    for (int i = 0; i < size; i++){
-        array[i] = i;
-    }
-    return array;
-}
 int main(){
     //size --> What do we put?
     //void* --> How can we get a stronger type?
@@ -46,4 +40,12 @@ int main(){
     free(array);
 
     return 0;
+}
+
+int* generateArray(int size){
+    int* array= malloc(sizeof(int) * size);
+    for (int i = 0; i < size; i++){
+        array[i] = i;
+    }
+    return array;
 }

@@ -1,7 +1,5 @@
 #include <stdio.h>
-
-void print_left(int row, int height);
-void print_right(int row, int height);
+#include "test_functs.h"
 
 int main(void)
 {

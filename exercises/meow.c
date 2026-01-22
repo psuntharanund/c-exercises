@@ -1,7 +1,5 @@
 #include <stdio.h>
-
-void meow(int n);
-int get_pos_int(void);
+#include "test_functs.h"
 
 int main(void)
 {
