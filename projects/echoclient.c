@@ -81,68 +81,62 @@ int main(int argc, char **argv)
     char portstr[6];
     snprintf(portstr, sizeof(portstr), "%hu", portno);
     
-    // Since you want to make it available for both IPv4 and IPv6, you should use hints instead of server_addr as getaddrinfo suppo    rts both IPv4 and IPv6 as getaddrinfo doesn't write the results 
-    struct addrinfo hints, *res, *p;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
+    // Since you want to make it available for both IPv4 and IPv6, you should use filters instead of server_addr as getaddrinfo supports both IPv4 and IPv6 as getaddrinfo doesn't write the results 
+    struct addrinfo filters, *serverResults, *serverResultsParser;
+    memset(&filters, 0, sizeof(filters));
+    filters.ai_family = AF_UNSPEC;
+    filters.ai_socktype = SOCK_STREAM;
     
-    int returnCode = getaddrinfo(hostname, portstr, &hints, &res);
+    int returnCode = getaddrinfo(hostname, portstr, &filters, &serverResults);
     if (returnCode != 0){
-        fprintf(stderr, "getaddrinfo: %s\n", gai_sterror(returnCode));
         return 1;
     }
 
     int sockfd = -1;
-    for (p = res; p != NULL; p = p->ai_next){sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+    for (serverResultsParser = serverResults; serverResultsParser != NULL; serverResultsParser = serverResultsParser->ai_next){
+        sockfd = socket(serverResultsParser->ai_family, 
+                        serverResultsParser->ai_socktype, 
+                        serverResultsParser->ai_protocol);
 
         if (sockfd < 0){
-            printf("Unable to create socket. . . quitting application.\n");
             continue;
-
+        }
          /* This is to check if it can connect to the socket */
-        if (connect(sockfd, p->ai_addr, p->ai_addrlen) == 0){
+        if (connect(sockfd, serverResultsParser->ai_addr, serverResultsParser->ai_addrlen) == 0){
             break;
         }
         close(sockfd);
         sockfd = -1;
     }
 
-    printf("Connected successfully to %s:%hu\n", hostname, portno);
+    freeaddrinfo(serverResults);
+    
+    if (sockfd < 0){
+        exit(1); 
+    }
 
     /* This will read the current line's input in the client server that the user types, up to 16 chars. */
-    char line[16];
-    while (1){
-        // This reads one line from STDIN
-        if (!fgets(line, sizeof(line), stdin)){
-            break;
-        }
+    char msgBuffer[16];
+    size_t msgLen = strlen(message);
+    if (msgLen > 15){
+        exit(1);
+    }
 
-        size_t linelength = strlen(line);
-        // This checks if the client sent anyhting, if not it will keep asking
-        if (linelength == 1 && line[0] == '\n'){
-            continue;
-        }
+    ssize_t sent = send(sockfd, message, msgLen, 0);
+    if (sent != (ssize_t)msgLen){
+        exit(1);
+    }
 
-        if (line[linelength - 1] != '\n'){
-            // If the line doesn't end with a newline char and there's room, we append by 1
-            if (linelength + 1 < sizeof(line)){
-                line[linelength] = '\n';
-                line[linelength + 1] = '\0';
-                linelength++;
-            }
-        }
-        // This will send the message that is being asked of it
-        size_t totalbytes = 0;
-        while (totalbytes < linelength){  
-            ssize_t sent = send(sockfd, line + totalbytes, linelength - totalbytes, 0);
-            if (sent < 0){
-                printf("You have put an invalid amount. Please try again.");
-                break;
-            }
-            totalbytes += (size_t)sent;
-        }}
+    ssize_t received = recv(sockfd, msgBuffer, sizeof(msgBuffer), 0);
+    if (received <= 0 || received > 15){
+        exit(1);
+    }
+
+    ssize_t written = write(STDOUT_FILENO, msgBuffer, (size_t)received);
+    if (written != received){
+        exit(1);
+    }
+
     close(sockfd);
     return 0;
-}
 }

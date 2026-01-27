@@ -67,28 +67,33 @@ int main(int argc, char **argv) {
     snprintf(portstr, sizeof(portstr), "%hu", portno);
             
     /* We need to make it available for both IPv4 and IPv6, and we can do that via getaddrinfo */
-    struct addrinfo hints, *results, *resultparser;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo filters, *serverResults, *serverResultsParser;
+    memset(&filters, 0, sizeof(filters));
+    filters.ai_family = AF_UNSPEC;
+    filters.ai_socktype = SOCK_STREAM;
+    filters.ai_flags = AI_PASSIVE;
 
-    int returnCode = getaddrinfo(hostname, portstr, &hints, &results);
+    int returnCode = getaddrinfo(NULL, portstr, &filters, &serverResults);
     if (returnCode != 0){
-        fprintf(stderr, "getaddrinfo: %s\n", gai_sterror(returnCode));
-        return 1;
+        exit(1);
     }
 
     int listenfd = -1;
-    for (resultparser = results; resultparser != NULL; resultparser = resultparser->ai_next){
+    for (serverResultsParser = serverResults; serverResultsParser != NULL; serverResultsParser = serverResultsParser->ai_next){
                                                                                                       
-        listenfd = socket(resultparser->ai_family, resultparser->ai_socktype, resultparser->ai_protocol);
+        listenfd = socket(serverResultsParser->ai_family,
+                          serverResultsParser->ai_socktype, 
+                          serverResultsParser->ai_protocol);
 
         if (listenfd < 0){
-            printf("Unable to create socket . . . quitting application.\n");
             continue;
         }
         
-        if (bind(listenfd, resultparser->ai_addr, resultparser->ai_addrlen) == 0){
+        /* If address is already in use, this will avoid it on restart */
+        int inUse = 1;
+        (void)setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &inUse, sizeof(inUse));
+
+        if (bind(listenfd, serverResultsParser->ai_addr, serverResultsParser->ai_addrlen) == 0){
             break;
         }
         
@@ -96,7 +101,45 @@ int main(int argc, char **argv) {
         listenfd = -1;
     }   
 
-    printf("Connected successfully to %s:%hu\n", hostname, portno);
+    freeaddrinfo(serverResults);
+    
+    if (listenfd < 0){
+        exit(1);
+    }
 
-  }
+    if (listen(listenfd, maxnpending) != 0){
+        close(listenfd);
+        exit(1);
+    }
+
+
+    for (;;){
+        int clientfd = accept(listenfd, NULL, NULL);
+        if (clientfd < 0){
+            close(listenfd);
+            exit(1);
+        }
+
+        for(;;){
+            char msgBuffer[16];
+            ssize_t msg = recv(clientfd, msgBuffer, sizeof(msgBuffer), 0);
+
+            if (msg == 0){
+                break;
+            }
+            if (msg < 0 || msg > 15){
+                close(clientfd);
+                close(listenfd);
+                exit(1);
+            }
+
+            ssize_t sent = send(clientfd, msgBuffer, (size_t)msg, 0);
+            if (sent != msg){
+                close(clientfd);
+                close(listenfd);
+                exit(1);
+            }
+        }
+    close(clientfd);
+    } 
 }
