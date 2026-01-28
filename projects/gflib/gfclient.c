@@ -6,12 +6,30 @@
  // Modify this file to implement the interface specified in
  // gfclient.h.
 
-// optional function for cleaup processing.
+// Since gfcrequest_t is an opaque pointer type in our gfclient.h file, we need to define what's inside it so that we can use it for all our other functions.
+
+struct gfcrequest_t{
+    const char *path;
+    const char *server;
+    unsigned short port;
+    gfstatus_t status;
+    size_t bytes_received;
+
+};
+
+// optional function for cleanup processing.
 void gfc_cleanup(gfcrequest_t **gfr) {}
 
 gfcrequest_t *gfc_create() {
-  // not yet implemented
-  return (gfcrequest_t *)NULL;
+    gfcrequest_t *request = calloc(1, sizeof(*request));
+    if (request == 0){
+        return NULL;
+    }
+    request->port = 0;
+    request->status = 0;
+    request->bytes_received = 0;
+
+    return request;
 }
 
 size_t gfc_get_bytesreceived(gfcrequest_t **gfr) {
@@ -21,6 +39,7 @@ size_t gfc_get_bytesreceived(gfcrequest_t **gfr) {
 
 gfstatus_t gfc_get_status(gfcrequest_t **gfr) {
   // not yet implemented
+    
   return -1;
 }
 
