@@ -17,5 +17,8 @@
 #include <resolv.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <stdlib.h>
 
  #endif // __GF_STUDENT_H__
