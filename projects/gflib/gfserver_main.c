@@ -20,13 +20,15 @@
   "options:\n"                                                                                 \
   "  -h          		Show this help message.\n"              		                       \
   "  -m [content_file]  Content file mapping keys to content filea (Default: 'content.txt')\n" \
-  "  -p [listen_port]   Listen port (Default: 52507)\n"
+  "  -p [listen_port]   Listen port (Default: 52507)\n"                                        \
+  "  -c [workerpool]    Worker pool\n "
 
 /* OPTIONS DESCRIPTOR ====================================================== */
 static struct option gLongOptions[] = {
     {"port", required_argument, NULL, 'p'},
     {"help", no_argument, NULL, 'h'},
     {"content", required_argument, NULL, 'm'},
+    {"workerpool", required_argument, NULL, 'c'},
     {NULL, 0, NULL, 0}};
 
 /* Main ========================================================= */
@@ -35,12 +37,12 @@ int main(int argc, char **argv) {
   char *content_map_file = "content.txt";
   unsigned short port = 52507;
   int option_char = 0;
-
+  int workerpool = 0;
 
   setbuf(stdout, NULL);  // disable caching of standpard output
 
   // Parse and set command line arguments
-  while ((option_char = getopt_long(argc, argv, "hal:p:m:", gLongOptions, NULL)) != -1) {
+  while ((option_char = getopt_long(argc, argv, "hal:p:m:c:", gLongOptions, NULL)) != -1) {
     switch (option_char) {
 
       case 'p':  /* listen-port */
@@ -52,6 +54,9 @@ int main(int argc, char **argv) {
       case 'h':  /* help */
         fprintf(stdout, "%s", USAGE);
         exit(0);
+        break;
+      case 'c':  /* workerpool */
+        workerpool = atoi(optarg);
         break;
       default:
         fprintf(stderr, "%s", USAGE);
@@ -65,7 +70,6 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Invalid port number\n");
     exit(EXIT_FAILURE);
   }
-
   /*Initializing server*/
   gfs = gfserver_create();
 
@@ -81,4 +85,5 @@ int main(int argc, char **argv) {
 
   // Run forever
   gfserver_serve(&gfs);
+    
 }

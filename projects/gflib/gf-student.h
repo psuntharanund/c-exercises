@@ -20,5 +20,6 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <stdlib.h>
+#include <pthread.h>
 
  #endif // __GF_STUDENT_H__

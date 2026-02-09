@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <regex.h>
 #include "gfclient.h"
+#include "handler.c"
 
 #define BUFSIZE 1024
 #define PATH_BUFFER_SIZE 256
@@ -16,7 +17,8 @@
   "  -p [server_port]    Server port (Default: 52507)\n"                  \
   "  -w [workload_path]  Path to workload file (Default: workload.txt)\n" \
   "  -s [server_addr]    Server address (Default: 127.0.0.1)\n"           \
-  "  -n [num_requests]   Request download total (Default: 14)\n"
+  "  -n [num_requests]   Request download total (Default: 14)\n"          \
+  "  -c [workerpool]     Provide an amount of workers to handle task\n"
 
 /* OPTIONS DESCRIPTOR ====================================================== */
 static struct option gLongOptions[] = {
@@ -25,6 +27,7 @@ static struct option gLongOptions[] = {
     {"help", no_argument, NULL, 'h'},
     {"workload", required_argument, NULL, 'w'},
     {"nrequests", required_argument, NULL, 'n'},
+    {"workerpool", required_argument, NULL, 'c'},
     {NULL, 0, NULL, 0}};
 
 static void Usage() { fprintf(stdout, "%s", USAGE); }
@@ -78,6 +81,7 @@ int main(int argc, char **argv) {
   char *workload_path = "workload.txt";
   int nrequests = 15;
   int option_char = 0;
+  int workerpool = 0;
 
   FILE *file;
   int returncode;
@@ -87,10 +91,13 @@ int main(int argc, char **argv) {
   char *server = "localhost";
   unsigned short port = 52507;
 
+  pthread_t tids[workerpool];
+  gfcrequest_t jobs[workerpool];
+
   setbuf(stdout, NULL);  // disable buffering
 
   // Parse and set command line arguments
-  while ((option_char = getopt_long(argc, argv, "l:r:hp:s:n:", gLongOptions,
+  while ((option_char = getopt_long(argc, argv, "l:r:hp:s:n:c:", gLongOptions,
                                     NULL)) != -1) {
     switch (option_char) {
       case 'r':
@@ -110,6 +117,9 @@ int main(int argc, char **argv) {
         break;
       case 'w':  // workload-path
         workload_path = optarg;
+        break;
+      case 'c':  // workerpool
+        workerpool = atoi(optarg);
         break;
       default:
         exit(1);
@@ -150,29 +160,36 @@ int main(int argc, char **argv) {
 
     gfc_set_writefunc(&gfr, writecb);
     gfc_set_writearg(&gfr, file);
+    
+    for (int j = 0; j <= workerpool; j++){
+        pthread_create(&tids[j], NULL, worker_job, &jobs[j]);
 
-    fprintf(stdout, "Requesting %s%s\n", server, req_path);
+        fprintf(stdout, "Requesting %s%s\n", server, req_path);
 
-    if (0 > (returncode = gfc_perform(&gfr))) {
-      fprintf(stdout, "gfc_perform returned error %d\n", returncode);
-      fclose(file);
-      if (0 > unlink(local_path))
-        fprintf(stderr, "warning: unlink failed on %s\n", local_path);
-    } else {
-      fclose(file);
+        if (0 > (returncode = gfc_perform(&gfr))) {
+          fprintf(stdout, "gfc_perform returned error %d\n", returncode);
+          fclose(file);
+          if (0 > unlink(local_path))
+            fprintf(stderr, "warning: unlink failed on %s\n", local_path);
+        } else {
+          fclose(file);
+        }
+
+        if (gfc_get_status(&gfr) != GF_OK) {
+          if (0 > unlink(local_path))
+            fprintf(stderr, "warning: unlink failed on %s\n", local_path);
+        }
+
+
+        fprintf(stdout, "Received:: %zu of %zu bytes\n", gfc_get_bytesreceived(&gfr),
+                gfc_get_filelen(&gfr));
+            fprintf(stdout, "Status: %s\n", gfc_strstatus(gfc_get_status(&gfr)));
+
+        gfc_cleanup(&gfr);
     }
-
-    if (gfc_get_status(&gfr) != GF_OK) {
-      if (0 > unlink(local_path))
-        fprintf(stderr, "warning: unlink failed on %s\n", local_path);
-    }
-
-
-    fprintf(stdout, "Received:: %zu of %zu bytes\n", gfc_get_bytesreceived(&gfr),
-            gfc_get_filelen(&gfr));
-        fprintf(stdout, "Status: %s\n", gfc_strstatus(gfc_get_status(&gfr)));
-
-    gfc_cleanup(&gfr);
+    for (int j = 0; j < workerpool; j++){
+            pthread_join(tids[j], NULL);
+        }
   }
 
   gfc_global_cleanup();
