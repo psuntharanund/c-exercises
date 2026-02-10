@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include "content.h"
 #include <unistd.h>
+#include "handler.c"
 
 #define USAGE                                                                                  \
   "usage:\n"                                                                                   \
@@ -72,9 +73,11 @@ int main(int argc, char **argv) {
   }
   /*Initializing server*/
   gfs = gfserver_create();
-
+  
   /*Setting options*/
-  gfserver_set_handler(&gfs, gfs_handler);
+  handler_set_threadCount(workerpool);
+  handler_init();
+  gfserver_set_handler(&gfs, handler_request);
   gfserver_set_port(&gfs, port);
   gfserver_set_maxpending(&gfs, 25);
 
@@ -85,5 +88,5 @@ int main(int argc, char **argv) {
 
   // Run forever
   gfserver_serve(&gfs);
-    
+  handler_shutdown();
 }
