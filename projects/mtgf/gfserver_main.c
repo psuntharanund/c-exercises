@@ -1,7 +1,6 @@
 #include <stdlib.h>
 
 #include "gfserver-student.h"
-#include "handler.c"
 
 #define USAGE                                                                                     \
   "usage:\n"                                                                                      \
@@ -54,7 +53,7 @@ int main(int argc, char **argv) {
   }
 
   // Parse and set command line arguments
-  while ((option_char = getopt_long(argc, argv, "p:d:rhm:t:", gLongOptions,
+  while ((option_char = getopt_long(argc, argv, "p:d:h:m:t:", gLongOptions,
                                     NULL)) != -1) {
     switch (option_char) {
       case 'h':  /* help */
@@ -94,6 +93,7 @@ int main(int argc, char **argv) {
   content_init(content_map);
 
   /* Initialize thread management */
+  init_threads(nthreads);
 
   /*Initializing server*/
   gfs = gfserver_create();

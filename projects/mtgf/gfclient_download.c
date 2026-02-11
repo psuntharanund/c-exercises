@@ -134,7 +134,9 @@ int main(int argc, char **argv) {
   gfc_global_init();
 
   // add your threadpool creation here
-
+    for (int i = 0; i < nthreads; i++){
+        pthread_create()
+    }
   /* Build your queue of requests here */
   for (int i = 0; i < nrequests; i++) {
     /* Note that when you have a worker thread pool, you will need to move this
