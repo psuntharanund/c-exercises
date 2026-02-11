@@ -99,7 +99,6 @@ int main(int argc, char **argv) {
       case 'w':  // workload-path
         workload_path = optarg;
         break;
-      case 'r': // nrequests
       case 'n': // nrequests
         nrequests = atoi(optarg);
         break;
