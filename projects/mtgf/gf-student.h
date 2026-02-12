@@ -20,5 +20,6 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include "steque.h"
 
  #endif // __GF_STUDENT_H__

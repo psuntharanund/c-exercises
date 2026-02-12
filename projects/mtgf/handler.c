@@ -2,7 +2,6 @@
 #include "gfserver.h"
 #include "workload.h"
 #include "content.h"
-#include "steque.h"
 
 static pthread_mutex_t queue_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t queue_cv = PTHREAD_COND_INITIALIZER;
@@ -32,7 +31,7 @@ typedef struct job{
 //  Note: you don't need to use arg. The test code uses it in some cases, but
 //        not in others.
 //
-static void *worker_job(void *arg){
+static void *server_worker_job(void *arg){
     (void)arg;
     for (;;){
         pthread_mutex_lock(&queue_mtx);
@@ -44,7 +43,7 @@ static void *worker_job(void *arg){
             pthread_cond_signal(&queue_cv);
             break;
         }
-        job_t * job = (job_t*)steque_pop(&queue);
+        job_t *job = (job_t*)steque_pop(&queue);
         pthread_mutex_unlock(&queue_mtx);
         content_get(job->path);
         int workfd = open(job->path, O_RDONLY);
@@ -52,9 +51,9 @@ static void *worker_job(void *arg){
             gfs_sendheader(job->ctx, GF_FILE_NOT_FOUND, 0);
             goto done;
         }
-        struct stat fileStatus;
-        fstat(workfd, &fileStatus);
-        size_t fileLen = fileStatus.st_size;
+        struct stat fileStats;
+        fstat(workfd, &fileStats);
+        size_t fileLen = fileStats.st_size;
         gfs_sendheader(job->ctx, job->status, fileLen);
 
         char buffer[1024];
@@ -83,7 +82,7 @@ void init_threads(size_t numthreads){
         exit(1);
     }
     for (int i = 0; i < numthreads; i++){
-        pthread_create(&workers[i], NULL, worker_job, NULL);
+        pthread_create(&workers[i], NULL, server_worker_job, NULL);
     }
 
 }
