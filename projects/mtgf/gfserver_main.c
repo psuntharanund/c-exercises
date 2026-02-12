@@ -75,8 +75,6 @@ int main(int argc, char **argv) {
       default:
         fprintf(stderr, "%s", USAGE);
         exit(1);
-
-
     }
   }
 

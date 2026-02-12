@@ -103,7 +103,7 @@ int main(int argc, char **argv) {
   setbuf(stdout, NULL);  // disable caching
 
   // Parse and set command line arguments
-  while ((option_char = getopt_long(argc, argv, "p:n:hs:t:r:w:", gLongOptions,
+  while ((option_char = getopt_long(argc, argv, "p:n:h:s:t:w:", gLongOptions,
                                     NULL)) != -1) {
     switch (option_char) {
 
@@ -151,69 +151,29 @@ int main(int argc, char **argv) {
     for (int i = 0; i < nthreads; i++){
         pthread_create(&workers[i], NULL, client_worker_job, NULL);
     }
+
   /* Build your queue of requests here */
-  for (int i = 0; i < nrequests; i++) {
-        const char *p = workload_get_path(workload_path);
+    for (int i = 0; i < nrequests; i++) {
+        const char *path = workload_get_path(workload_path);
         job_t *job = malloc(sizeof(*job));
-        job->path = strdup(p);
+        job->path = strdup(path);
         pthread_mutex_lock(&queue_mtx);
         steque_enqueue(&queue, (steque_item)job);
-    /* Note that when you have a worker thread pool, you will need to move this
-     * logic into the worker threads */
-    req_path = workload_get_path();
+        pthread_cond_broadcast(&queue_cv);
+        pthread_mutex_unlock(&queue_mtx);
 
-    if (strlen(req_path) > PATH_BUFFER_SIZE) {
-      fprintf(stderr, "Request path exceeded maximum of %d characters\n.", PATH_BUFFER_SIZE);
-      exit(EXIT_FAILURE);
     }
 
-    localPath(req_path, local_path);
+    pthread_mutex_lock(&queue_mtx);
+    queueingDone = 1;
+    pthread_cond_broadcast(&queue_cv);
+    pthread_mutex_unlock(&queue_mtx);
 
-    file = openFile(local_path);
-
-    gfr = gfc_create();
-    gfc_set_path(&gfr, req_path);
-
-    gfc_set_port(&gfr, port);
-    gfc_set_server(&gfr, server);
-    gfc_set_writearg(&gfr, file);
-    gfc_set_writefunc(&gfr, writecb);
-
-
-
-    fprintf(stdout, "Requesting %s%s\n", server, req_path);
-
-    if (0 > (returncode = gfc_perform(&gfr))) {
-      fprintf(stdout, "gfc_perform returned an error %d\n", returncode);
-      fclose(file);
-      if (0 > unlink(local_path))
-        fprintf(stderr, "warning: unlink failed on %s\n", local_path);
-    } else {
-      fclose(file);
+    for (int i = 0; i < nthreads; i++){
+        pthread_join(workers[i], NULL);
     }
-
-    if (gfc_get_status(&gfr) != GF_OK) {
-      if (0 > unlink(local_path)) {
-        fprintf(stderr, "warning: unlink failed on %s\n", local_path);
-      }
-    }
-
-    fprintf(stdout, "Status: %s\n", gfc_strstatus(gfc_get_status(&gfr)));
-    fprintf(stdout, "Received %zu of %zu bytes\n", gfc_get_bytesreceived(&gfr),
-            gfc_get_filelen(&gfr));
-
-    gfc_cleanup(&gfr);
-
-    /*
-     * note that when you move the above logic into your worker thread, you will
-     * need to coordinate with the boss thread here to effect a clean shutdown.
-     */
-  }
-
-  gfc_global_cleanup();  /* use for any global cleanup for AFTER your thread
-                          pool has terminated. */
-
-  return 0;
+    gfc_global_cleanup();
+    return 0;
 }
 
 static void *client_worker_job(void *arg){
@@ -248,8 +208,6 @@ static void *client_worker_job(void *arg){
         gfc_set_writearg(&gfr, file);
         gfc_set_writefunc(&gfr, writecb);
 
-
-
         fprintf(stdout, "Requesting %s%s\n", server, req_path);
 
         if (0 > (returncode = gfc_perform(&gfr))) {
@@ -272,14 +230,6 @@ static void *client_worker_job(void *arg){
                                                         gfc_get_filelen(&gfr));
 
         gfc_cleanup(&gfr);
-
-        /*
-         * note that when you move the above logic into your worker thread, you will
-         * need to coordinate with the boss thread here to effect a clean shutdown.
-         */
-
-        gfc_global_cleanup();  /* use for any global cleanup for AFTER your thread
-                              pool has terminated. */
 
         free(job->path);
         free(job);
