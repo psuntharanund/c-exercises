@@ -13,13 +13,7 @@ static int queueingDone = 0;
 
 typedef struct job{
     char *path;
-    gfcontext_t **ctx;
-    gfstatus_t status;
-    gfh_error_t result;
-    pthread_mutex_t done_mtx;
-    pthread_cond_t done_cv;
-    int complete;
-
+    gfcontext_t *ctx;
 }job_t;
 
 //
@@ -31,50 +25,99 @@ typedef struct job{
 //  Note: you don't need to use arg. The test code uses it in some cases, but
 //        not in others.
 //
+static int send_all(gfcontext_t **ctx, const char *buf, size_t len){
+    size_t offset = 0;
+    while (offset < len){
+        ssize_t sent = gfs_send(ctx, buf + offset, len - offset);
+        if (sent <= 0){
+            return -1;
+        }
+        offset+=(size_t)sent;
+    }
+    return 0;
+}
+
 static void *server_worker_job(void *arg){
     (void)arg;
-    for (;;){
+    for (;;){ 
         pthread_mutex_lock(&queue_mtx);
-        while ((steque_isempty(&queue) == 0) && (queueingDone == 0)){
+        while (steque_isempty(&queue) && queueingDone == 0){
             pthread_cond_wait(&queue_cv, &queue_mtx);
         }
-        if ((steque_isempty(&queue) == 0) && (queueingDone != 0)){
+        if (steque_isempty(&queue) && queueingDone != 0){
             pthread_mutex_unlock(&queue_mtx);
-            pthread_cond_signal(&queue_cv);
             break;
         }
         job_t *job = (job_t*)steque_pop(&queue);
         pthread_mutex_unlock(&queue_mtx);
-        content_get(job->path);
-        int workfd = open(job->path, O_RDONLY);
-        if (workfd < 0){
-            gfs_sendheader(job->ctx, GF_FILE_NOT_FOUND, 0);
+
+        int send_abort = 0;
+        int workfd = -1;
+        int basefd = content_get(job->path);
+        
+        if (basefd < 0){
+            if (gfs_sendheader(&job->ctx, GF_FILE_NOT_FOUND, 0) < 0){
+                send_abort = 1;
+            }
             goto done;
         }
-        struct stat fileStats;
-        fstat(workfd, &fileStats);
-        size_t fileLen = fileStats.st_size;
-        gfs_sendheader(job->ctx, job->status, fileLen);
 
-        char buffer[1024];
-        ssize_t workConnection;
-        while ((workConnection = read(workfd, buffer, sizeof(buffer))) > 0){
-            if (gfs_send(job->ctx, buffer, (size_t)workConnection) < 0){
-                break;
+        workfd = dup(basefd);
+        if (workfd < 0){
+            if (gfs_sendheader(&job->ctx, GF_ERROR, 0) < 0){
+                send_abort = 1;
             }
+            goto done;
         }
-        close(workfd);
+
+        struct stat fileStats;
+        if (fstat(workfd, &fileStats) < 0){
+            if (gfs_sendheader(&job->ctx, GF_FILE_NOT_FOUND, 0) < 0){
+                send_abort = 1;
+            }
+            goto done;
+        }
+        size_t fileLen = (size_t)fileStats.st_size;
+       
+        if (gfs_sendheader(&job->ctx, GF_OK, fileLen) < 0){
+            send_abort = 1;
+            goto done;
+        }
+
+        char buffer[4096];
+        off_t offset = 0;
+ 
+        ssize_t bytesRead;
+        while ((bytesRead = pread(workfd, buffer, sizeof(buffer), offset)) > 0){
+            if (send_all(&job->ctx, buffer, (size_t)bytesRead) < 0){
+                send_abort = 1;
+                break;
+            }    
+            offset+=bytesRead;
+        }
         
+        if (bytesRead < 0){
+            send_abort = 1;
+        }
+
     done:
-        pthread_mutex_lock(&job->done_mtx);
-        job->complete = 1;
-        pthread_cond_broadcast(&job->done_cv);
-        pthread_mutex_unlock(&job->done_mtx);
+        if (workfd >= 0){
+            close(workfd);
+        }
+
+        if (send_abort && job->ctx != NULL){
+            gfs_abort(&job->ctx);
+            job->ctx = NULL;
+        }
+
+        free(job->path);
+        free(job);
     }
     return NULL;
 }
 
 void init_threads(size_t numthreads){
+    signal(SIGPIPE, SIG_IGN);
     steque_init(&queue);
     threadCount = numthreads;
     workers = malloc(numthreads * sizeof(*workers));
@@ -100,45 +143,27 @@ void cleanup_threads(){
             free(workers);
             workers = NULL;
     }
+
 }
 
 gfh_error_t gfs_handler(gfcontext_t **ctx, const char *path, void* arg){
-	
+    (void)arg;
+
     job_t *job = calloc(1, sizeof(*job));
-    
     if (job == NULL){
         gfs_sendheader(ctx, GF_ERROR, 0);
+        *ctx = NULL;
         return gfh_failure;
     }
-    
-    job->ctx = ctx;
+
+    job->ctx = *ctx;
+    *ctx = NULL;
     job->path = strdup(path ? path : "");
-    pthread_mutex_init(&job->done_mtx, NULL);
-    pthread_cond_init(&job->done_cv, NULL);
-    job->complete = 0;
-    job->result = gfh_failure;
     
     pthread_mutex_lock(&queue_mtx);
     steque_enqueue(&queue, (steque_item)job);
-
+    pthread_cond_signal(&queue_cv);
     pthread_mutex_unlock(&queue_mtx);
-    pthread_cond_broadcast(&queue_cv);
 
-    pthread_mutex_lock(&job->done_mtx);
-    job->complete = 1;
-    pthread_cond_signal(&job->done_cv);
-    while (job->complete == 0){
-        pthread_cond_wait(&job->done_cv, &job->done_mtx);
-    }
-    pthread_mutex_unlock(&job->done_mtx);
-
-    gfh_error_t result = job->result;
-
-    pthread_cond_destroy(&job->done_cv);
-    pthread_mutex_destroy(&job->done_mtx);
-    free(job->path);
-    free(job);
-
-	return result;
+	return gfh_success;
 }
-

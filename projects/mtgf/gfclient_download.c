@@ -86,16 +86,8 @@ static void *client_worker_job(void *arg);
   char *server = "localhost";
   int option_char = 0;
   unsigned short port = 56726;
-  char *req_path = NULL;
-
-
-  int returncode = 0;
   int nthreads = 8;
-  char local_path[PATH_BUFFER_SIZE];
   int nrequests = 14;
-
-  gfcrequest_t *gfr = NULL;
-  FILE *file = NULL;
 
 /* Main ========================================================= */
 int main(int argc, char **argv) {
@@ -103,7 +95,7 @@ int main(int argc, char **argv) {
   setbuf(stdout, NULL);  // disable caching
 
   // Parse and set command line arguments
-  while ((option_char = getopt_long(argc, argv, "p:n:h:s:t:w:", gLongOptions,
+  while ((option_char = getopt_long(argc, argv, "p:n:hs:t:r:w:", gLongOptions,
                                     NULL)) != -1) {
     switch (option_char) {
 
@@ -113,6 +105,7 @@ int main(int argc, char **argv) {
       case 'w':  // workload-path
         workload_path = optarg;
         break;
+      case 'r': // nrequests
       case 'n': // nrequests
         nrequests = atoi(optarg);
         break;
@@ -146,7 +139,10 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
   gfc_global_init();
-
+    workers = malloc(sizeof(*workers) * nthreads);
+    if (workers == 0){
+        exit(EXIT_FAILURE);
+    }
   // add your threadpool creation here
     for (int i = 0; i < nthreads; i++){
         pthread_create(&workers[i], NULL, client_worker_job, NULL);
@@ -154,7 +150,7 @@ int main(int argc, char **argv) {
 
   /* Build your queue of requests here */
     for (int i = 0; i < nrequests; i++) {
-        const char *path = workload_get_path(workload_path);
+        const char *path = workload_get_path();
         job_t *job = malloc(sizeof(*job));
         job->path = strdup(path);
         pthread_mutex_lock(&queue_mtx);
@@ -178,20 +174,27 @@ int main(int argc, char **argv) {
 
 static void *client_worker_job(void *arg){
     (void)arg;
+    char *req_path = NULL;
+    int returncode = 0;
+    char local_path[PATH_BUFFER_SIZE];
+    gfcrequest_t *gfr = NULL;
+    FILE *file = NULL;
+    
     for (;;){
         pthread_mutex_lock(&queue_mtx);
-        while ((steque_isempty(&queue) == 0) && (queueingDone == 0)){
+        while (steque_isempty(&queue) && queueingDone == 0){
             pthread_cond_wait(&queue_cv, &queue_mtx);
         }
-        if ((steque_isempty(&queue) == 0) && (queueingDone != 0)){
+        if (steque_isempty(&queue) && queueingDone != 0){
             pthread_mutex_unlock(&queue_mtx);
             pthread_cond_signal(&queue_cv);
+            break;
         }
         job_t *job = (job_t*)steque_pop(&queue);
         pthread_mutex_unlock(&queue_mtx);
-        req_path = workload_get_path();
+        req_path = job->path;
 
-        if (strlen(req_path) > PATH_BUFFER_SIZE) {
+        if (strlen(req_path) >= PATH_BUFFER_SIZE) {
             fprintf(stderr, "Request path exceeded maximum of %d characters\n.", PATH_BUFFER_SIZE);
             exit(EXIT_FAILURE);
         }
@@ -233,7 +236,7 @@ static void *client_worker_job(void *arg){
 
         free(job->path);
         free(job);
-
     }
+    return NULL;
 }
 

@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
   }
 
   // Parse and set command line arguments
-  while ((option_char = getopt_long(argc, argv, "p:d:h:m:t:", gLongOptions,
+  while ((option_char = getopt_long(argc, argv, "p:d:rhm:t:", gLongOptions,
                                     NULL)) != -1) {
     switch (option_char) {
       case 'h':  /* help */
@@ -92,6 +92,7 @@ int main(int argc, char **argv) {
 
   /* Initialize thread management */
   init_threads(nthreads);
+  atexit(cleanup_threads);
 
   /*Initializing server*/
   gfs = gfserver_create();
