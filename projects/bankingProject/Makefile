@@ -63,7 +63,7 @@ $(BIN_DIR):
 .PHONY: clean run debug
 
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR)
+	rm -f $(OBJ_DIR)/*.o $(BIN_DIR)/*
 
 run: all
 	./$(BIN_DIR)/$(TARGET)
