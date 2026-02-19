@@ -46,7 +46,7 @@ $(BIN_DIR):
 ######################################
 .PHONY: clean list
 clean:
-	rm -rf $(BIN_DIR)
+	rm -f $(BIN_DIR)/*
 
 list:
 	@echo "Programs:" $(PROGS)

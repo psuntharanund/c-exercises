@@ -1,55 +1,54 @@
 ######################################
-# Project settings
+# Layout
 ######################################
-
-TARGET      := app
-SRC_DIR     := src
-OBJ_DIR     := obj
-BIN_DIR     := bin
+SRC_DIR := src
+OBJ_DIR := obj
+BIN_DIR := bin
 
 ######################################
 # Toolchain
 ######################################
-
-CC          := gcc
-CXX         := g++
-CFLAGS      := -Wall -Wextra -Werror -std=c11 -g
-CXXFLAGS    := -Wall -Wextra -Werror -std=c++17 -g
-LDFLAGS     :=
+CC      := gcc
+CFLAGS  := -Wall -Wextra -Werror -std=c11 -g
+CPPFLAGS:= -I$(SRC_DIR)
 
 ######################################
-# Source files
+# Discover programs: one per .c file
 ######################################
-
-SRCS        := $(wildcard $(SRC_DIR)/*.c)
-OBJS        := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
-DEPS        := $(OBJS:.o=.d)
+SRCS  := $(wildcard $(SRC_DIR)/*.c)
+PROGS := $(basename $(notdir $(SRCS)))          # foo.c -> foo
+OBJS  := $(addprefix $(OBJ_DIR)/,$(PROGS:=.o))  # foo -> obj/foo.o
+BINS  := $(addprefix $(BIN_DIR)/,$(PROGS))      # foo -> bin/foo
+DEPS  := $(OBJS:.o=.d)
 
 ######################################
-# Default target
+# Default target: build everything
 ######################################
-
 .PHONY: all
-all: $(BIN_DIR)/$(TARGET)
+all: $(BINS)
 
 ######################################
-# Link
+# Build one program by name:
+#   make foo  => builds bin/foo (and obj/foo.o)
 ######################################
-
-$(BIN_DIR)/$(TARGET): $(OBJS) | $(BIN_DIR)
-	$(CC) $(OBJS) $(LDFLAGS) -o $@
+.PHONY: $(PROGS)
+$(PROGS): %: $(BIN_DIR)/%
 
 ######################################
-# Compile
+# Link: bin/foo from obj/foo.o
 ######################################
+$(BIN_DIR)/%: $(OBJ_DIR)/%.o | $(BIN_DIR)
+	$(CC) $(CFLAGS) $< -o $@
 
+######################################
+# Compile: obj/foo.o from src/foo.c (+ auto header deps)
+######################################
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
-	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
 
 ######################################
 # Directories
 ######################################
-
 $(OBJ_DIR):
 	mkdir -p $(OBJ_DIR)
 
@@ -57,23 +56,17 @@ $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
 
 ######################################
-# Utility targets
+# Utilities
 ######################################
-
-.PHONY: clean run debug
-
+.PHONY: clean list
 clean:
-	rm -f $(OBJ_DIR)/*.o $(BIN_DIR)/*
+	rm -f $(OBJ_DIR)/*.o $(OBJ_DIR)/*.d $(BIN_DIR)/*
 
-run: all
-	./$(BIN_DIR)/$(TARGET)
-
-debug:
-	$(MAKE) CFLAGS="$(CFLAGS) -DDEBUG"
+list:
+	@echo "Programs:" $(PROGS)
 
 ######################################
 # Dependencies
 ######################################
-
 -include $(DEPS)
 
