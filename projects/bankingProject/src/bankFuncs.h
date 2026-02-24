@@ -1,11 +1,6 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <string.h>
-#include <netinet/in.h>
+#include "headers.h"
+
+typedef struct operation_t operation_t;
 
 void startProgram();
 void chooseOperation(int choice);
