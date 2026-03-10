@@ -9,6 +9,22 @@ typedef struct{
     size_t size;
 } MemoryBuf;
 
+static size_t write_callback(void *body, size_t size, size_t mem, void *user){
+    size_t totalSize = size * mem;
+    MemoryBuf *memory = (MemoryBuf *)user;
+
+    char *cbptr = realloc(memory->data, memory->size + totalSize + 1);
+    if (cbptr){
+        return 0;
+    }
+
+    memory->data = cbptr;
+    memcpy(&(memory->data[memory->size]), body, totalSize);
+    memory->size += totalSize;
+    memory->data[memory->size] = '\0';
+
+    return totalSize;
+}
 ssize_t handle_with_curl(gfcontext_t *ctx, const char *path, void* arg){
 	(void) ctx;
 	(void) arg;
@@ -43,14 +59,27 @@ ssize_t handle_with_curl(gfcontext_t *ctx, const char *path, void* arg){
     //set options
     curl_easy_setopt(curl, CURLOPT_URL, "https://raw.githubusercontent.com/gt-cs6200/image_data/master/yellowstone.jpg");
     curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, error_buf);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+
     //perform xfer
-    
-    //xfer complete, get info
+    result = curl_easy_perform(curl);
+    if (result != CURLE_OK){
+        fprintf(stderr, "Easy perform failed.\n", error_buf[0] ? error_buf : curl_easy_strerror(result));
+    } else {
+        int responseCode = 0;
+        char *responseContent = NULL;
+
+        //xfer complete, get info
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &responseCode);
+        curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &responseContent);
+
+    }
     
     //cleanup
-	errno = ENOSYS;
-	return -1;	
+    curl_easy_cleanup(curl);
+    free(response.data);
+	return 0;	
 }
 
 /*
