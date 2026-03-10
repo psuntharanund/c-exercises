@@ -45,6 +45,11 @@ ssize_t handle_with_curl(gfcontext_t *ctx, const char *path, void* arg){
     response.data[0] = '\0';
 
     //init easy-session 
+    if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK){
+        fprintf(stderr, "Global init failed.\n");
+        free(response.data);
+        return 1;
+    }
 
     curl = curl_easy_init();
     if (!curl){
