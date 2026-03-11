@@ -108,6 +108,6 @@ int main(int argc, char **argv) {
   // Invoke the framework - this is an infinite loop and shouldn't return
   gfserver_serve(&gfs);
   // not reached
-  return -2211;
+  return 1;
 
 }

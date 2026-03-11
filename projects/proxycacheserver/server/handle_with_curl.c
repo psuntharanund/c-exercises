@@ -32,7 +32,6 @@ ssize_t handle_with_curl(gfcontext_t *ctx, const char *path, void* arg){
 	//Your implementation here
     CURL *curl;
     CURLcode result;
-    char error_buf[CURL_ERROR_SIZE];
     MemoryBuf response;
     response.data = malloc(1);
     response.size = 0;
@@ -57,20 +56,17 @@ ssize_t handle_with_curl(gfcontext_t *ctx, const char *path, void* arg){
         curl_global_cleanup();
         free(response.data);
         return 1;
-    }
-    
-    error_buf[0] = '\0';
+    } 
 
     //set options
     curl_easy_setopt(curl, CURLOPT_URL, "https://raw.githubusercontent.com/gt-cs6200/image_data/master/yellowstone.jpg");
-    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, error_buf);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
 
     //perform xfer
     result = curl_easy_perform(curl);
     if (result != CURLE_OK){
-        fprintf(stderr, "Easy perform failed.\n", error_buf[0] ? error_buf : curl_easy_strerror(result));
+        return 1;
     } else {
         int responseCode = 0;
         char *responseContent = NULL;
@@ -83,6 +79,7 @@ ssize_t handle_with_curl(gfcontext_t *ctx, const char *path, void* arg){
     
     //cleanup
     curl_easy_cleanup(curl);
+    curl_global_cleanup();
     free(response.data);
 	return 0;	
 }
