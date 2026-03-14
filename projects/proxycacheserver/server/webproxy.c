@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
   int option_char = 0;
   unsigned short port = 16655;
   unsigned short nworkerthreads = 8;
-  const char *server = "https://raw.githubusercontent.com/gt-cs6200/image_data/master/yellowstone.jpg";
+  const char *server = "https://raw.githubusercontent.com/gt-cs6200/image_data";
 
   // disable buffering on stdout
   setbuf(stdout, NULL);
