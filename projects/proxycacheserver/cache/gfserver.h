@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/signal.h>
+#include <sys/mman.h>
 #include "steque.h"
 
 
