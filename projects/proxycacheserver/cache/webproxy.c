@@ -44,7 +44,7 @@ static struct option gLongOptions[] = {
 //gfs
 static gfserver_t gfs;
 //handles cache
-extern ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg);
+extern ssize_t handle_with_cache(gfcontext_t *ctx, const char *path, void* arg);
 
 static void _sig_handler(int signo){
   if (signo == SIGTERM || signo == SIGINT){

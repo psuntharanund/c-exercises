@@ -18,8 +18,10 @@
 #include <sys/stat.h>
 #include <sys/signal.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <semaphore.h>
 #include "steque.h"
-
 
 #define MAX_REQUEST_LEN 128
 
