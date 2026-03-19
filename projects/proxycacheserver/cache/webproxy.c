@@ -43,12 +43,17 @@ static struct option gLongOptions[] = {
 
 //gfs
 static gfserver_t gfs;
+
+//global pool
+static proxy_pool_t g_pool;
+
 //handles cache
 extern ssize_t handle_with_cache(gfcontext_t *ctx, const char *path, void* arg);
 
 static void _sig_handler(int signo){
   if (signo == SIGTERM || signo == SIGINT){
     //cleanup could go here
+    proxy_pool_destroy(&g_pool);
     gfserver_stop(&gfs);
     exit(signo);
   }
@@ -137,10 +142,13 @@ int main(int argc, char **argv) {
 
 
 
-  /* Initialize shared memory set-up here
-
+  // Initialize shared memory set-up here 
+    if (proxy_pool_init(&g_pool, nsegments, segsize) < 0){
+        fprintf(stderr, "Failed to initialize proxy shmem pool.\n");
+        exit(SERVER_FAILURE);
+    }
   // Initialize server structure here
-  */
+  
   gfserver_init(&gfs, nworkerthreads);
 
   // Set server options here
@@ -150,7 +158,7 @@ int main(int argc, char **argv) {
 
   // Set up arguments for worker here
   for(int i = 0; i < nworkerthreads; i++) {
-    gfserver_setopt(&gfs, GFS_WORKER_ARG, i, "data");
+    gfserver_setopt(&gfs, GFS_WORKER_ARG, i, &g_pool);
   }
   
   // Invokethe framework - this is an infinite loop and will not return

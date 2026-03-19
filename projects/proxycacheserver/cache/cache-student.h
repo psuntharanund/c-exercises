@@ -55,5 +55,18 @@ typedef struct{
     pthread_cond_t cv;
 } proxy_pool_t;
 
+//proxy helpers
+int proxy_pool_init(proxy_pool_t *pool, unsigned int nsegments, size_t segment_size);
+void proxy_pool_destroy(proxy_pool_t *pool);
+//this one is to acquire the connection to the shmem segment 
+proxy_seg_t *proxy_seg_acq(proxy_pool_t *pool);
+void proxy_seg_release(proxy_pool_t *pool, proxy_seg_t *segment);
+
+//cache helpers
+int cache_socket_init();
+void cache_socket_cleanup();
+
+//to connect proxy server to cache 
+int connect_to_cache_socket();
 
 #endif // __CACHE_STUDENT_H__844
