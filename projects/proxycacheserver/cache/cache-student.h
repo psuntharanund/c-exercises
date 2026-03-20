@@ -56,14 +56,23 @@ typedef struct{
 } proxy_pool_t;
 
 //proxy helpers
+//prepares the proxy resources
 int proxy_pool_init(proxy_pool_t *pool, unsigned int nsegments, size_t segment_size);
+
+//cleans up the proxy resources
 void proxy_pool_destroy(proxy_pool_t *pool);
-//this one is to acquire the connection to the shmem segment 
+
+//this one is to give one worker exclusive access to one available segment 
 proxy_seg_t *proxy_seg_acq(proxy_pool_t *pool);
-void proxy_seg_release(proxy_pool_t *pool, proxy_seg_t *segment);
+
+//return segment back to pool after request completes
+void proxy_seg_release(proxy_pool_t *pool, proxy_seg_t *seg);
 
 //cache helpers
+//start cache command channel with Unix socket since it is IPC
 int cache_socket_init();
+
+//cleanup cache socket
 void cache_socket_cleanup();
 
 //to connect proxy server to cache 
