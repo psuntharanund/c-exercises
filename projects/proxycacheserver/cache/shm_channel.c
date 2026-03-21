@@ -2,6 +2,16 @@
 // This is optional but may help with code reuse
 //
 #include "cache-student.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/stat.h>
+#include <errno.h>
 
 static int g_cache_sockfd = -1;
 
@@ -31,18 +41,18 @@ int proxy_pool_init(proxy_pool_t *pool, unsigned int nsegments, size_t segment_s
         seg->inUse = 0;
         
         //open shmem object
-        seg->shm_fd = shm_open(seg->shm_name, O_CREAT | O_RDWR, 0600);
-        if (seg->shm_fd < 0){
+        seg->shmfd = shm_open(seg->shm_name, O_CREAT | O_RDWR, 0600);
+        if (seg->shmfd < 0){
             return -1;
         }
         
         //establish length of shmem object
-        if (ftruncate(seg->shm_fd, segment_size) < 0){
+        if (ftruncate(seg->shmfd, segment_size) < 0){
             return -1;
         }
         
         //map shmrm object into proxy process for worker
-        seg->addr = mmap(NULL, segment_size, PROT_READ | PROT_WRITE, MAP_SHARED, seg->shm_fd, 0);
+        seg->addr = mmap(NULL, segment_size, PROT_READ | PROT_WRITE, MAP_SHARED, seg->shmfd, 0);
         if (seg->addr == MAP_FAILED){
             return -1;
         }
@@ -75,8 +85,8 @@ void proxy_pool_destroy(proxy_pool_t *pool){
         }
         
         //remove the process's handle
-        if (seg->shm_fd >= 0){
-            close(seg->shm_fd);
+        if (seg->shmfd >= 0){
+            close(seg->shmfd);
         }
 
         if (seg->sem_empty && seg->sem_empty != SEM_FAILED){

@@ -1,5 +1,10 @@
 #include "gfserver.h"
 #include "cache-student.h"
+#include <string.h>
+#include <unistd.h>
+#include <semaphore.h>
+#include <errno.h>
+
 
 #define BUFSIZE (839)
 
@@ -9,54 +14,87 @@ Replace with your implementation
  __.__
 */
 ssize_t handle_with_cache(gfcontext_t *ctx, const char *path, void* arg){
-	size_t file_len;
-    size_t bytes_transferred;
-	char *data_dir = arg;
-	ssize_t read_len;
-    ssize_t write_len;
-	char buffer[BUFSIZE];
-	int fildes;
-	struct stat statbuf;
+    proxy_pool_t *pool = (proxy_pool_t *)arg;
+    proxy_seg_t *seg = NULL;
+    shm_packet_t *pkt;
+    cache_request_t request;
+    int sock = -1;
+    ssize_t totalBytesTransferred = 0;
+    int headerTransferred = 0;
+    
+    //each request needs their own segment
+    seg = proxy_seg_acq(pool);
+    pkt = (shm_packet_t *)seg->addr;
 
-	strncpy(buffer,data_dir, BUFSIZE);
-	strncat(buffer,path, BUFSIZE);
+    //since segments are reusable, we need to clear it each time a worker picks up a segment
+    memset(pkt, 0, seg->seg_size);
+    memset(&request, 0, sizeof(request));
 
-	if( 0 > (fildes = open(buffer, O_RDONLY))){
-		if (errno == ENOENT)
-			//If the file just wasn't found, then send FILE_NOT_FOUND code
-			return gfs_sendheader(ctx, GF_FILE_NOT_FOUND, 0);
-		else
-			//Otherwise, it must have been a server error. gfserver library will handle
-			return SERVER_FAILURE;
-	}
+    //populate what gets sent to command channel
+    strncpy(request.path, path, sizeof(request.path) -1);
+    strncpy(request.shm_name, seg->shm_name, sizeof(request.shm_name) -1);
+    strncpy(request.sem_is_empty, seg->sem_is_empty, sizeof(request.sem_is_empty) - 1);
+    strncpy(request.sem_is_full, seg->sem_is_full, sizeof(request.sem_is_full) -1);
+    request.seg_size = seg->seg_size;
 
-	//Calculating the file size
-	if (fstat(fildes, &statbuf) < 0) {
-		return SERVER_FAILURE;
-	}
-	file_len = (size_t) statbuf.st_size;
-	///
+    //connect to cache 
+    //they should not crash if other process hasn't started yet
+    //"if proxy cannot connect to IPC mechanism . . .then it might delay for a second and try again"
+    while ((sock = connect_to_cache_socket()) < 0){
+        sleep(1);
+    }
 
-	gfs_sendheader(ctx, GF_OK, file_len);
+    if (write(sock, &request, sizeof(request)) != sizeof(request)){
+        goto failure;
+    }
 
-	//Sending the file contents chunk by chunk
+    while (1){
+        if (sem_wait(seg->sem_full) < 0){
+            goto failure;
+        }
+        //we only need to be able to distinguish between cache hit or miss
+        if (!headerTransferred){
+            if (pkt->status == CACHE_STATUS_NOTFOUND){
+                sem_post(seg->sem_empty);
+                close(sock);
+                proxy_seg_release(pool, seg);
+                return gfs_sendheader(ctx, GF_FILE_NOT_FOUND, 0);
+            } else if (pkt->status != CACHE_STATUS_OK){
+                sem_post(seg->sem_empty);
+                goto failure;
+            }
 
-	bytes_transferred = 0;
-	while(bytes_transferred < file_len){
-		read_len = read(fildes, buffer, BUFSIZE);
-		if (read_len <= 0){
-			fprintf(stderr, "handle_with_file read error, %zd, %zu, %zu", read_len, bytes_transferred, file_len );
-			return SERVER_FAILURE;
-		}
-		write_len = gfs_send(ctx, buffer, read_len);
-		if (write_len != read_len){
-			fprintf(stderr, "handle_with_file write error");
-			return SERVER_FAILURE;
-		}
-		bytes_transferred += write_len;
-	}
+            if (gfs_sendheader(ctx, GF_OK, pkt->fileSize) < 0){
+                sem_post(seg->sem_empty);
+                goto failure;
+            }
 
-	return bytes_transferred;
+            headerTransferred = 1;
+        }
 
+        if (pkt->validBytes > 0){
+            ssize_t sent = gfs_send(ctx, pkt->buffer, pkt->validBytes);
+            if (sent != (ssize_t)pkt->validBytes){
+                sem_post(seg->sem_empty);
+                goto failure;
+            }
+            totalBytesTransferred+=sent;
+        }
+        
+        if (pkt->streamDone){
+            sem_post(seg->sem_empty);
+            break;
+        }
 
+        sem_post(seg->sem_empty);
+    }
+
+    close(sock);
+    proxy_seg_release(pool, seg);
+    return totalBytesTransferred;
+
+failure:
+    close(sock);
+    proxy_seg_release(pool, seg);
+    return SERVER_FAILURE;
 }

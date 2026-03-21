@@ -7,6 +7,9 @@ You can use this however you want.
 
 #include "steque.h"
 #include "gfserver.h"
+#include <stddef.h>
+#include <pthread.h>
+#include <semaphore.h>
 
 #define CACHE_SOCK_PATH "/tmp/simplecache.sock"
 #define MAX_REQ_PATH 512
@@ -38,7 +41,7 @@ typedef struct{
     char shm_name[MAX_NAME];
     char sem_is_empty[MAX_NAME];
     char sem_is_full[MAX_NAME];
-    int shm_fd;
+    int shmfd;
     void *addr;
     size_t seg_size;
     sem_t *sem_empty;

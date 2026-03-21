@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <sys/mman.h>
 #include <unistd.h>
 #include <printf.h>
 #include <string.h>
@@ -28,8 +29,22 @@ unsigned long int cache_delay;
 static void _sig_handler(int signo){
 	if (signo == SIGTERM || signo == SIGINT){
 		// This is where your IPC clean up should occur
+        cache_socket_cleanup();
+        simplecache_destroy();
 		exit(signo);
 	}
+}
+
+ssize_t read_all(int fd, void *buf, size_t len){
+    size_t totalBytes = 0;
+    while (totalBytes < len){
+        ssize_t sent = read(fd, (char*)buf + totalBytes, len - totalBytes);
+        if (sent <= 0){
+            return -1;
+        }
+        totalBytes+=sent;
+    }
+    return totalBytes;
 }
 
 #define USAGE                                                                 \
@@ -109,7 +124,135 @@ int main(int argc, char **argv) {
 	simplecache_init(cachedir);
 
 	// Cache should go here
+    int cache_server_fd = cache_socket_init();
+    if (cache_server_fd < 0){
+        fprintf(stderr, "Failed to initialize cache socket.\n");
+        exit(CACHE_FAILURE);
+    }
 
+    while (1){
+        //request specific resources
+        int clientfd = accept(cache_server_fd, NULL, NULL);
+        int shmfd = -1;
+        int filefd = -1;
+        void *addr = MAP_FAILED;
+        struct stat st;
+        cache_request_t request;
+        shm_packet_t *pkt = NULL;
+        sem_t *sem_empty = SEM_FAILED;
+        sem_t *sem_full = SEM_FAILED; 
+        size_t headerSize = sizeof(shm_packet_t);
+        size_t dataCap = 0;
+
+
+        if (clientfd < 0){
+            continue;
+        }
+
+        if (read_all(clientfd, &request, sizeof(request)) < 0){
+            close(clientfd);
+            continue;
+        }
+
+        shmfd = shm_open(request.shm_name, O_RDWR, 0600);
+        if (shmfd < 0){
+            close(clientfd);
+            continue;
+        }
+
+        addr = mmap(NULL, request.seg_size, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
+        if (addr == MAP_FAILED){
+            close(shmfd);
+            close(clientfd);
+            continue;
+        }
+
+        pkt = (shm_packet_t *)addr;
+        dataCap = request.seg_size - headerSize;
+        
+        sem_empty = sem_open(request.sem_is_empty, 0);
+        sem_full = sem_open(request.sem_is_full, 0);
+
+        if (sem_empty == SEM_FAILED || sem_full == SEM_FAILED){
+            munmap(addr, request.seg_size);
+            close(shmfd);
+            close(clientfd);
+            continue;
+        }
+
+        filefd = simplecache_get(request.path);
+        int reqfd = dup(filefd);
+        if (reqfd < 0){
+            goto send_fail;
+        } else {
+            if (fstat(reqfd, &st) < 0){
+                goto send_fail;
+            } else{
+                size_t totalBytesTransferred = 0;
+                size_t fileSize = (size_t)st.st_size;
+
+                while (1){
+                    ssize_t response;
+                    sem_wait(sem_empty);
+                    response = pread(reqfd, pkt->buffer, dataCap, totalBytesTransferred);
+                    if (response < 0){
+                        pkt->status = CACHE_STATUS_NOTFOUND;
+                        pkt->fileSize = fileSize;
+                        pkt->validBytes = 0;
+                        pkt->streamDone = 1;
+                        sem_post(sem_full);
+                        break;
+                    }
+
+                    pkt->status = CACHE_STATUS_OK;
+                    pkt->fileSize = fileSize;
+                    pkt->validBytes = (size_t)response;
+                    totalBytesTransferred+=(size_t)response;
+                    pkt->streamDone = (totalBytesTransferred >= fileSize || response == 0);
+                    sem_post(sem_full);
+
+                    if (pkt->streamDone){
+                        break;
+                    }
+                }
+            }
+            goto cleanup;
+
+    send_fail:
+        sem_wait(sem_empty);
+        pkt->status = CACHE_STATUS_NOTFOUND;
+        pkt->fileSize = 0;
+        pkt->validBytes = 0;
+        pkt->streamDone = 1;
+        sem_post(sem_full);
+    
+    cleanup:
+        if (filefd >= 0){
+            close(filefd);
+        }
+
+        if (sem_empty != SEM_FAILED){
+            sem_close(sem_empty);
+        }
+
+        if (sem_full != SEM_FAILED){
+            sem_close(sem_full);
+        }
+
+        if (addr != MAP_FAILED){
+            munmap(addr, request.seg_size);
+        }
+
+        if (shmfd >= 0){
+            close(shmfd);
+        }
+
+        if (clientfd >= 0){
+            close(clientfd);
+        }
+    }
+    }
 	// Line never reached
 	return -1;
+
 }
